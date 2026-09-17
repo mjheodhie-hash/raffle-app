@@ -1,0 +1,452 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Image from 'next/image';
+
+function QuantumParticles() {
+  const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; delay: number }>>([]);
+
+  useEffect(() => {
+    const newParticles = Array.from({ length: 30 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      delay: Math.random() * 3
+    }));
+    setParticles(newParticles);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {particles.map((particle) => (
+        <div
+          key={particle.id}
+          className="absolute w-1 h-1 bg-cyan-400 rounded-full animate-pulse"
+          style={{
+            left: `${particle.x}%`,
+            top: `${particle.y}%`,
+            animationDelay: `${particle.delay}s`,
+            boxShadow: '0 0 10px rgba(34, 211, 238, 0.8)'
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function QuantumIcon() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="inline-block">
+      <circle cx="24" cy="12" r="3" fill="#22d3ee" className="animate-pulse" />
+      <circle cx="36" cy="24" r="3" fill="#22d3ee" className="animate-pulse" style={{ animationDelay: '0.2s' }} />
+      <circle cx="24" cy="36" r="3" fill="#22d3ee" className="animate-pulse" style={{ animationDelay: '0.4s' }} />
+      <circle cx="12" cy="24" r="3" fill="#22d3ee" className="animate-pulse" style={{ animationDelay: '0.6s' }} />
+      <circle cx="24" cy="24" r="4" fill="#06b6d4" className="animate-pulse" style={{ animationDelay: '0.3s' }} />
+      <path d="M24 12 L36 24 L24 36 L12 24 Z" stroke="#22d3ee" strokeWidth="1" fill="none" opacity="0.3" />
+    </svg>
+  );
+}
+
+interface Config {
+  title: string;
+  logo: string;
+  theme: string;
+  background: string;
+}
+
+interface RaffleData {
+  participants: any[];
+  schools: any[];
+  winners: {
+    participants: any[];
+    schools: any[];
+  };
+}
+
+export default function RafflePage() {
+  const [config, setConfig] = useState<Config>({
+    title: '7th IT Congress Raffle',
+    logo: '',
+    theme: 'purple',
+    background: 'gradient'
+  });
+  const [mode, setMode] = useState<'participants' | 'schools'>('participants');
+  const [data, setData] = useState<RaffleData>({
+    participants: [],
+    schools: [],
+    winners: { participants: [], schools: [] }
+  });
+  const [currentWinner, setCurrentWinner] = useState<any>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [displayText, setDisplayText] = useState('');
+
+  useEffect(() => {
+    loadConfig();
+    loadData();
+  }, []);
+
+  const loadConfig = async () => {
+    try {
+      const res = await fetch('/api/config');
+      const configData = await res.json();
+      setConfig(configData);
+    } catch (error) {
+      console.error('Failed to load config:', error);
+    }
+  };
+
+  const loadData = async () => {
+    try {
+      const res = await fetch('/api/data');
+      const raffleData = await res.json();
+      setData(raffleData);
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    }
+  };
+
+  const pickWinner = async () => {
+    const pool = mode === 'participants' ? data.participants : data.schools;
+    
+    if (pool.length === 0) {
+      alert('No available entries to pick from!');
+      return;
+    }
+
+    setIsAnimating(true);
+    setDisplayText('');
+    setCurrentWinner(null);
+
+    let counter = 0;
+    const interval = setInterval(() => {
+      const randomEntry = pool[Math.floor(Math.random() * pool.length)];
+      const displayValue = mode === 'participants' 
+        ? (randomEntry.Name || randomEntry.name || JSON.stringify(randomEntry))
+        : (randomEntry.School || randomEntry.school || JSON.stringify(randomEntry));
+      setDisplayText(displayValue);
+      counter++;
+
+      if (counter > 30) {
+        clearInterval(interval);
+        const winner = pool[Math.floor(Math.random() * pool.length)];
+        setCurrentWinner(winner);
+        
+        const finalDisplay = mode === 'participants'
+          ? (winner.Name || winner.name || JSON.stringify(winner))
+          : (winner.School || winner.school || JSON.stringify(winner));
+        setDisplayText(finalDisplay);
+        setIsAnimating(false);
+
+        saveWinner(winner);
+      }
+    }, 100);
+  };
+
+  const saveWinner = async (winner: any) => {
+    try {
+      await fetch('/api/winners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, winner })
+      });
+
+      loadData();
+    } catch (error) {
+      console.error('Failed to save winner:', error);
+    }
+  };
+
+  const getThemeColors = () => {
+    const themes: any = {
+      purple: 'from-purple-900 via-blue-900 to-indigo-900',
+      blue: 'from-blue-900 via-cyan-900 to-teal-900',
+      green: 'from-green-900 via-emerald-900 to-teal-900',
+      red: 'from-red-900 via-pink-900 to-rose-900',
+      orange: 'from-orange-900 via-red-900 to-pink-900'
+    };
+    return themes[config.theme] || themes.purple;
+  };
+
+  const getBackgroundClass = () => {
+    if (config.background === 'image' && config.backgroundImage) {
+      return '';
+    } else if (config.background === 'solid') {
+      return `bg-${config.theme}-900`;
+    } else if (config.background === 'animated') {
+      return `bg-gradient-to-br ${getThemeColors()} animate-gradient`;
+    }
+    return `bg-gradient-to-br ${getThemeColors()}`;
+  };
+
+  const availableCount = mode === 'participants' 
+    ? data.participants.length 
+    : data.schools.length;
+
+  const winnersCount = mode === 'participants'
+    ? data.winners.participants.length
+    : data.winners.schools.length;
+
+  const pool = mode === 'participants' ? data.participants : data.schools;
+  const visibleParticipants = pool.slice(0, 8);
+  const [progress, setProgress] = useState(0);
+  const [transactionId, setTransactionId] = useState('');
+
+  useEffect(() => {
+    if (isAnimating) {
+      setProgress(0);
+      const progressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(progressInterval);
+            return 100;
+          }
+          return prev + 3;
+        });
+      }, 100);
+      return () => clearInterval(progressInterval);
+    }
+  }, [isAnimating]);
+
+  useEffect(() => {
+    if (currentWinner) {
+      const hash = Array.from({ length: 12 }, () => 
+        Math.random().toString(36).substring(2, 3)
+      ).join('');
+      setTransactionId(`0x7a889c...f3e4d5${hash.substring(0, 4)}`);
+    }
+  }, [currentWinner]);
+
+  return (
+    <div 
+      className={`min-h-screen ${getBackgroundClass()} p-8 relative overflow-hidden flex items-center justify-center`}
+      style={config.background === 'image' && config.backgroundImage ? {
+        backgroundImage: `url(${config.backgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed'
+      } : {}}
+    >
+      <QuantumParticles />
+
+      <div className="max-w-7xl w-full mx-auto relative z-10">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <QuantumIcon />
+            <h1 className="text-5xl font-bold text-white tracking-wider drop-shadow-2xl uppercase">
+              {config.title || 'QUANTUM RAFFLE'}
+            </h1>
+          </div>
+          {config.logo && (
+            <div className="relative w-12 h-12 mx-auto mt-2">
+              <Image src={config.logo} alt="Logo" fill className="object-contain" />
+            </div>
+          )}
+        </div>
+
+        {/* Mode Selector */}
+        <div className="flex justify-center gap-2 mb-8">
+          <button
+            onClick={() => setMode('participants')}
+            className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
+              mode === 'participants'
+                ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/50'
+                : 'bg-white/10 text-white hover:bg-white/20 border border-white/30'
+            }`}
+          >
+            Participants
+          </button>
+          <button
+            onClick={() => setMode('schools')}
+            className={`px-6 py-2 rounded-full text-sm font-semibold transition-all ${
+              mode === 'schools'
+                ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/50'
+                : 'bg-white/10 text-white hover:bg-white/20 border border-white/30'
+            }`}
+          >
+            Schools
+          </button>
+        </div>
+
+        {/* Main Content - Hexagons */}
+        <div className="flex items-center justify-center gap-8 mb-8">
+          {/* Participants Hexagon */}
+          <div className="relative w-96 h-96">
+            <div className="absolute inset-0" style={{
+              clipPath: 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)'
+            }}>
+              <div className="w-full h-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 backdrop-blur-sm border-2 border-cyan-400/60 shadow-2xl shadow-cyan-500/30" />
+            </div>
+            
+            <div className="absolute inset-0 flex flex-col items-center justify-start p-8 pt-12">
+              <h2 className="text-lg font-bold text-cyan-300 mb-1 tracking-wider">PARTICIPANTS</h2>
+              <div className="text-xs text-cyan-400/70 mb-4">{mode === 'participants' ? 'Satoshi_Nakamoto' : 'Selected_Schools'}</div>
+              
+              <div className="w-full space-y-2 overflow-y-auto max-h-64 scrollbar-thin scrollbar-thumb-cyan-500/50 scrollbar-track-transparent">
+                {visibleParticipants.map((participant, idx) => {
+                  const displayName = mode === 'participants' 
+                    ? (participant.Name || participant.name || 'Unknown')
+                    : (participant.School || participant.school || 'Unknown');
+                  
+                  return (
+                    <div 
+                      key={idx}
+                      className={`flex items-center gap-3 px-4 py-2 bg-white/5 border border-cyan-500/30 rounded-lg backdrop-blur-sm transition-all ${
+                        isAnimating ? 'animate-pulse' : ''
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center flex-shrink-0">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                          <circle cx="8" cy="8" r="6" stroke="#22d3ee" strokeWidth="1.5" />
+                          <circle cx="8" cy="8" r="2" fill="#22d3ee" />
+                        </svg>
+                      </div>
+                      <span className="text-white text-sm font-medium truncate">{displayName}</span>
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-400/50 flex items-center justify-center ml-auto flex-shrink-0">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                          <circle cx="8" cy="8" r="6" stroke="#22d3ee" strokeWidth="1.5" />
+                          <circle cx="8" cy="8" r="2" fill="#22d3ee" />
+                        </svg>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {pool.length > 8 && (
+                <div className="text-xs text-cyan-400/60 mt-2">
+                  +{pool.length - 8} more entries
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Winner Hexagon */}
+          <div className="relative w-96 h-96">
+            <div className="absolute inset-0" style={{
+              clipPath: 'polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%)'
+            }}>
+              <div className="w-full h-full bg-gradient-to-br from-cyan-500/20 to-blue-500/20 backdrop-blur-sm border-2 border-cyan-400/60 shadow-2xl shadow-cyan-500/30" />
+            </div>
+            
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-8">
+              <h2 className="text-lg font-bold text-cyan-300 mb-8 tracking-wider">WINNER</h2>
+              
+              {currentWinner ? (
+                <div className="text-center">
+                  <div className="relative w-32 h-32 mx-auto mb-6">
+                    <svg viewBox="0 0 100 100" className="w-full h-full animate-spin-slow">
+                      <defs>
+                        <linearGradient id="winnerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#22d3ee" />
+                          <stop offset="100%" stopColor="#06b6d4" />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="50" cy="50" r="45" fill="none" stroke="url(#winnerGrad)" strokeWidth="3" opacity="0.3" />
+                      <circle cx="50" cy="50" r="35" fill="none" stroke="url(#winnerGrad)" strokeWidth="2" opacity="0.5" />
+                      <circle cx="50" cy="50" r="25" fill="url(#winnerGrad)" opacity="0.8" />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <path d="M24 8L28 20L40 24L28 28L24 40L20 28L8 24L20 20L24 8Z" fill="white" className="animate-pulse" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-white mb-2 px-4 break-words">
+                    {displayText}
+                  </div>
+                  <div className="text-cyan-400 text-sm">🎉 Congratulations! 🎉</div>
+                </div>
+              ) : (
+                <div className="relative w-40 h-40">
+                  <svg viewBox="0 0 100 100" className="w-full h-full">
+                    <defs>
+                      <linearGradient id="questionGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#22d3ee" />
+                        <stop offset="100%" stopColor="#06b6d4" />
+                      </linearGradient>
+                    </defs>
+                    <text x="50" y="70" textAnchor="middle" fill="url(#questionGrad)" fontSize="60" fontWeight="bold" className="animate-pulse">
+                      ?
+                    </text>
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="url(#questionGrad)" strokeWidth="2" opacity="0.3" className="animate-pulse" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Pick Name Button */}
+        <div className="flex justify-center mb-8">
+          <button
+            onClick={pickWinner}
+            disabled={isAnimating || availableCount === 0}
+            className="relative px-16 py-4 bg-gradient-to-r from-cyan-500/30 to-blue-500/30 border-2 border-cyan-400 text-white text-xl font-bold tracking-wider hover:from-cyan-500/40 hover:to-blue-500/40 disabled:from-gray-700/30 disabled:to-gray-800/30 disabled:border-gray-600 disabled:cursor-not-allowed shadow-2xl shadow-cyan-500/50 transition-all backdrop-blur-sm"
+            style={{
+              clipPath: 'polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px)'
+            }}
+          >
+            {isAnimating ? 'PROCESSING...' : 'PICK NAME'}
+          </button>
+        </div>
+
+        {/* Block Confirmation */}
+        {isAnimating && (
+          <div className="max-w-xl mx-auto mb-8">
+            <div className="text-center text-cyan-300 text-sm mb-2 tracking-wide">BLOCK CONFIRMATION...</div>
+            <div className="relative h-6 bg-gray-900/50 border border-cyan-500/50 rounded-full overflow-hidden backdrop-blur-sm">
+              <div 
+                className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300 rounded-full"
+                style={{ width: `${progress}%` }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+              </div>
+              <div className="absolute inset-0 flex items-center justify-end pr-4 text-white text-xs font-bold">
+                {progress}%
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Transaction Display */}
+        {currentWinner && (
+          <div className="max-w-2xl mx-auto">
+            <div className="relative bg-gradient-to-br from-gray-900/80 to-gray-800/80 border-2 border-cyan-500/50 rounded-2xl p-6 backdrop-blur-md">
+              <div className="flex items-center justify-center gap-4">
+                <div className="relative w-24 h-24">
+                  <div className="absolute inset-0 animate-spin-slow">
+                    <svg viewBox="0 0 100 100" className="w-full h-full">
+                      <defs>
+                        <linearGradient id="cubeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#22d3ee" />
+                          <stop offset="100%" stopColor="#06b6d4" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" fill="none" stroke="url(#cubeGrad)" strokeWidth="2" />
+                      <path d="M50 20 L50 50 M50 50 L80 65 M50 50 L20 65" stroke="url(#cubeGrad)" strokeWidth="1" opacity="0.5" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-cyan-300 text-sm mb-1 tracking-wide">TRANSACTION ID: {transactionId}</div>
+                  <div className="text-white/60 text-xs">Block confirmed and winner recorded on chain</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="absolute top-4 right-4 flex gap-2 text-xs">
+          <div className="px-3 py-1.5 bg-cyan-500/30 text-cyan-300 rounded-full border border-cyan-400/50 backdrop-blur-sm">
+            Available: {availableCount}
+          </div>
+          <div className="px-3 py-1.5 bg-purple-500/30 text-purple-300 rounded-full border border-purple-400/50 backdrop-blur-sm">
+            Winners: {winnersCount}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
